@@ -23,10 +23,51 @@ JINJA_ENVIRONMENT = jinja2.Environment(
     extensions=['jinja2.ext.autoescape'],
     autoescape=True)
 
+# This API key is provided by google as described in the tutorial
+API_KEY = 'XXxxXxXXXXxxNXXxXXXxxxNNXXxxxxxxxXXXxXX'
+
+
+# This uses discovery to create an object that can talk to the 
+# fusion tables API using the developer key
+service = build('fusiontables', 'v1', developerKey=API_KEY)
+
+# This is the table id for the fusion table
+TABLE_ID = 'NxxxNXxXxxNxXXXXNXxXXXxXxxxNxXxNxXxxXxxX'
+
+# This is the default columns for the query
+query_cols = []
+query_animals = ['DOG']
+
 # Import the Flask Framework
 from flask import Flask, request
 app = Flask(__name__)
 
+def get_all_data(query):
+    response = service.query().sql(sql=query).execute()
+    return response
+
+# make a query given a set of columns to retrieve
+def make_query(cols, animals, limit):
+    string_cols = ""
+    if cols == []:
+        cols = ['*']
+    for col in cols:
+        string_cols = string_cols + ", " + col
+    string_cols = string_cols[2:len(string_cols)]
+
+    string_animals = ""
+    for animal in animals:
+        string_animals = string_animals + ", " + animal
+    string_animals = string_animals[2:len(string_animals)]
+    
+    query = "SELECT " + string_cols + " FROM " + TABLE_ID + " WHERE AnimalType = '" + string_animals + "'"
+
+    query = query + " LIMIT " + str(limit)
+
+    logging.info(query)
+    # query = "SELECT * FROM " + TABLE_ID + " WHERE  AnimalType = 'DOG' LIMIT 2"
+
+    return query
     
 # Note: We don't need to call run() since our application is embedded within
 # the App Engine WSGI application server.
@@ -34,16 +75,19 @@ app = Flask(__name__)
 @app.route('/')
 def index():
     template = JINJA_ENVIRONMENT.get_template('templates/index.html')
-    return template.render()
+    request = service.column().list(tableId=TABLE_ID)
+    allheaders = get_all_data(make_query([], query_animals, 1))
+    logging.info('allheaders')
+    return template.render(allheaders=allheaders['columns'] )
 
 @app.route('/_update_table', methods=['POST']) 
-def update_prediction():
+def update_table():
     logging.info(request.get_json())
-    features = request.json['features']
+    cols = request.json['cols']
     logging.info(cols)
-    result = 3#run machine learning here
+    result = get_all_data(make_query(cols, query_animals, 100))
     logging.info(result)
-    return json.dumps({'content' : result})
+    return json.dumps({'content' : result['rows'], 'headers' : result['columns']})
 
 @app.route('/about')
 def about():
